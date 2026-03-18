@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<meta charset="utf-8">
+	<meta name="description" content="Responsive design testing for the masses">
+	<title>Responsive Design Testing</title>
+	<style>
+		:root {
+			--primary-color: #2563eb;
+			--bg-color: #f8fafc;
+			--card-bg: #ffffff;
+			--text-main: #1e293b;
+			--text-muted: #64748b;
+			--border-color: #e2e8f0;
+			--shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+		}
+
+		* {
+			margin: 0;
+			padding: 0;
+			box-sizing: border-box;
+			vertical-align: top;
+		}
+
+		body {
+			background-color: var(--bg-color);
+			color: var(--text-main);
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+			height: 100vh;
+			display: flex;
+			flex-direction: column;
+			overflow: hidden;
+		}
+
+		#url {
+			background: var(--card-bg);
+			padding: 1.5rem 2rem;
+			border-bottom: 1px solid var(--border-color);
+			box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+			z-index: 10;
+		}
+
+		form {
+			max-width: 1400px;
+			margin: 0 auto;
+			display: flex;
+			gap: 1rem;
+			align-items: center;
+			flex-wrap: wrap;
+		}
+
+		.input-group {
+			display: flex;
+			gap: 0.5rem;
+			align-items: center;
+			flex: 1;
+			min-width: 300px;
+		}
+
+		.add-group {
+			display: flex;
+			gap: 0.5rem;
+			align-items: center;
+			padding-left: 1rem;
+			border-left: 1px solid var(--border-color);
+		}
+
+		#url input[type=text], #url input[type=number] {
+			padding: 0.6rem 1rem;
+			font-size: 0.95rem;
+			border: 1px solid var(--border-color);
+			border-radius: 0.4rem;
+			outline: none;
+			transition: all 0.2s;
+			color: var(--text-main);
+			background: #fff;
+			flex: 1;
+		}
+
+		#url input[type=number] {
+			width: 100px;
+		}
+
+		#url input[type=text]:focus, #url input[type=number]:focus {
+			border-color: var(--primary-color);
+			box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+		}
+
+		#url input[type=submit], .btn-add {
+			padding: 0.6rem 1.5rem;
+			font-size: 0.95rem;
+			font-weight: 600;
+			color: #fff;
+			background-color: var(--primary-color);
+			border: none;
+			border-radius: 0.4rem;
+			cursor: pointer;
+			transition: background-color 0.2s;
+			white-space: nowrap;
+		}
+
+		#url input[type=submit]:hover, .btn-add:hover {
+			background-color: #1d4ed8;
+		}
+
+		.btn-delete {
+			background: none;
+			border: none;
+			color: #ef4444;
+			cursor: pointer;
+			padding: 4px;
+			border-radius: 4px;
+			display: flex;
+			align-items: center;
+			justify-content: center;
+			transition: background-color 0.2s;
+		}
+
+		.btn-delete:hover {
+			background-color: #fee2e2;
+		}
+
+		.btn-delete svg {
+			width: 16px;
+			height: 16px;
+		}
+
+		#frames {
+			flex: 1;
+			padding: 2rem;
+			overflow-y: auto;
+			display: flex;
+			justify-content: center;
+		}
+
+		#inner {
+			display: flex;
+			gap: 2rem;
+			width: 100%;
+			max-width: 1800px;
+			height: 100%;
+		}
+
+		.frame {
+			display: flex;
+			flex-direction: column;
+			background: var(--card-bg);
+			border-radius: 0.75rem;
+			border: 1px solid var(--border-color);
+			box-shadow: var(--shadow);
+			overflow: hidden;
+			height: 100%;
+			position: relative;
+		}
+
+		.frame h2 {
+			padding: 0.75rem 1rem;
+			font-size: 0.875rem;
+			font-weight: 600;
+			color: var(--text-muted);
+			background: #fafafa;
+			border-bottom: 1px solid var(--border-color);
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 0.5rem;
+			z-index: 2;
+		}
+
+		.loader {
+			border: 2px solid #f3f3f3;
+			border-top: 2px solid var(--primary-color);
+			border-radius: 50%;
+			width: 14px;
+			height: 14px;
+			animation: spin 0.8s linear infinite;
+			display: none;
+		}
+
+		@keyframes spin {
+			0% { transform: rotate(0deg); }
+			100% { transform: rotate(360deg); }
+		}
+
+		.iframe-container {
+			flex: 1;
+			position: relative;
+			overflow: hidden;
+			width: 100%;
+		}
+
+		iframe {
+			border: none;
+			background: #fff;
+			transform-origin: 0 0;
+			display: block;
+			position: absolute;
+			top: 0;
+			left: 0;
+		}
+
+		#footer {
+			padding: 1rem 2rem;
+			background: var(--card-bg);
+			border-top: 1px solid var(--border-color);
+			font-size: 0.75rem;
+			color: var(--text-muted);
+			text-align: center;
+		}
+
+		#footer a {
+			color: var(--primary-color);
+			text-decoration: none;
+		}
+
+		#footer a:hover {
+			text-decoration: underline;
+		}
+	</style>
+</head>
+<body id="container">
+	<div id="url">
+		<form method="post" id="url-form">
+			<div class="input-group">
+				<input type="text" id="url-input" placeholder="Test your own site... type the url and hit enter" />
+				<input type="submit" value="Load">
+			</div>
+			<div class="add-group">
+				<input type="number" id="custom-width" placeholder="Width" min="100" max="4000" />
+				<button type="button" class="btn-add" id="add-frame">Add Frame</button>
+			</div>
+			<div id="options">
+			</div>
+		</form>
+	</div>
+	<div id="frames" class="widthOnly">
+		<div id="inner">
+			<div id="f1" class="frame" style="flex: 393;">
+				<h2>
+					<span>393</span>
+					<div class="loader"></div>
+					<button class="btn-delete" title="Delete Frame">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+					</button>
+				</h2>
+				<div class="iframe-container">
+					<iframe sandbox="allow-same-origin allow-forms allow-scripts" seamless width="393"></iframe>
+				</div>
+			</div>
+			<div id="f2" class="frame" style="flex: 1440;">
+				<h2>
+					<span>1440</span>
+					<div class="loader"></div>
+					<button class="btn-delete" title="Delete Frame">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+					</button>
+				</h2>
+				<div class="iframe-container">
+					<iframe sandbox="allow-same-origin allow-forms allow-scripts" seamless width="1440"></iframe>
+				</div>
+			</div>
+			<div id="f3" class="frame" style="flex: 1920;">
+				<h2>
+					<span>1920</span>
+					<div class="loader"></div>
+					<button class="btn-delete" title="Delete Frame">
+						<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+					</button>
+				</h2>
+				<div class="iframe-container">
+					<iframe sandbox="allow-same-origin allow-forms allow-scripts" seamless width="1920"></iframe>
+				</div>
+			</div>
+		</div>
+	</div>
+	<div id="footer">
+		<span>A tool by <a href="https://github.com/terenzzzz">Terence</a></span>
+	</div>
+
+	<script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+	<script src="responsive.js"></script>
+
+</body>
+</html>
