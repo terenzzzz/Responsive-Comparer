@@ -36,6 +36,39 @@ function getInitialUrlFromLocation() {
   }
 }
 
+function getFallbackUrl() {
+  return normalizeInputUrl($('#url-input').val() || defaultURL);
+}
+
+function rememberFrameUrl($iframe, url) {
+  var normalizedUrl = normalizeInputUrl(url);
+  if (normalizedUrl) {
+    $iframe.data('current-url', normalizedUrl);
+  }
+  return normalizedUrl;
+}
+
+function getFrameUrl($frame) {
+  var $iframe = $frame.find('iframe');
+  var url = '';
+
+  try {
+    url = $iframe.contents().get(0).location.href;
+  } catch (e) {
+    url = $iframe.data('current-url') || '';
+  }
+
+  return normalizeInputUrl(url || getFallbackUrl());
+}
+
+function loadIframe($iframe, url) {
+  var normalizedUrl = rememberFrameUrl($iframe, url);
+  if (!normalizedUrl) return;
+  $iframe.data('loaded', false);
+  showLoader($iframe.closest('.frame').attr('id'));
+  $iframe.get(0).src = normalizedUrl;
+}
+
 //show loading graphic
 function showLoader(id) {
   $('#' + id + ' .loader').fadeIn('slow');
@@ -61,11 +94,22 @@ function loadPage($frame, url) {
   $('iframe').not($frame).each(function(){showLoader($(this).parent().attr('id'));})
   $('iframe').not($frame).data('loaded', false);
   $('iframe').not($frame).each(function() {
+    rememberFrameUrl($(this), url);
     this.src = url;
   });
 }
 
 $('.frame').each(function(){showLoader($(this).attr('id'))});
+
+var suppressIframeSyncUntil = 0;
+
+function suppressIframeSyncFor(ms) {
+  suppressIframeSyncUntil = Date.now() + ms;
+}
+
+function shouldSuppressIframeSync() {
+  return Date.now() < suppressIframeSyncUntil;
+}
 
 
 //when document loads
@@ -76,13 +120,17 @@ function onIframeLoad() {
 
   try {
     url = $this.contents().get(0).location.href;
+    rememberFrameUrl($this, url);
   } catch (e) {
     error = true;
-    if ($('#url-input').val() != '') {
-      url = $('#url-input').val();
-    } else {
-      url = defaultURL;
-    }
+    url = $this.data('current-url') || getFallbackUrl();
+  }
+
+  if (shouldSuppressIframeSync()) {
+    hideLoader($this.closest('.frame').attr('id'));
+    $this.data('loaded', true);
+    updateScaling();
+    return;
   }
 
   //load other pages with the same URL
@@ -133,6 +181,74 @@ function updateScaling() {
   });
 }
 
+var frameDragState = {
+  $frame: null,
+  handleEl: null,
+  pointerId: null,
+  startX: 0,
+  startY: 0,
+  dragging: false
+};
+
+var FRAME_DRAG_MOVE_TOLERANCE = 8;
+
+function resetFrameDragState() {
+  if (frameDragState.$frame) {
+    frameDragState.$frame.removeClass('is-drag-ready is-dragging');
+    frameDragState.$frame.css('transform', '');
+  }
+  $('body').removeClass('frame-dragging');
+  frameDragState.handleEl = null;
+  frameDragState.$frame = null;
+  frameDragState.pointerId = null;
+  frameDragState.startX = 0;
+  frameDragState.startY = 0;
+  frameDragState.dragging = false;
+}
+
+function updateDraggedFramePosition(clientX, clientY) {
+  if (!frameDragState.$frame || !frameDragState.dragging) return;
+
+  var deltaX = clientX - frameDragState.startX;
+  var deltaY = clientY - frameDragState.startY;
+
+  frameDragState.$frame.css('transform', 'translate3d(' + deltaX + 'px, ' + deltaY + 'px, 0)');
+}
+
+function moveFrameToPointer(clientX) {
+  var $dragged = frameDragState.$frame;
+  if (!$dragged || !$dragged.length) return;
+
+  var inserted = false;
+  $('#inner .frame').not($dragged).each(function() {
+    var rect = this.getBoundingClientRect();
+    var midpoint = rect.left + rect.width / 2;
+
+    if (clientX < midpoint) {
+      if (this.previousElementSibling !== $dragged.get(0)) {
+        $(this).before($dragged);
+      }
+      inserted = true;
+      return false;
+    }
+  });
+
+  if (!inserted) {
+    $('#inner').append($dragged);
+  }
+}
+
+function beginFrameDrag() {
+  if (!frameDragState.$frame || !frameDragState.$frame.length) return;
+  suppressIframeSyncFor(1000);
+  frameDragState.dragging = true;
+  frameDragState.$frame.removeClass('is-drag-ready').addClass('is-dragging');
+  $('body').addClass('frame-dragging');
+  if (frameDragState.handleEl && frameDragState.handleEl.setPointerCapture) {
+    frameDragState.handleEl.setPointerCapture(frameDragState.pointerId);
+  }
+}
+
 //when document loads
 $(document).ready(function() {
 
@@ -157,11 +273,26 @@ $(document).ready(function() {
     var frameHtml = `
       <div id="${id}" class="frame" style="flex: ${width};">
         <h2>
-          <span>${width}</span>
+          <span class="frame-title">
+            <span class="drag-hint" title="Drag to reorder">
+              <span class="drag-handle" aria-hidden="true">
+                <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="9" cy="6" r="1.5" /><circle cx="15" cy="6" r="1.5" /><circle cx="9" cy="12" r="1.5" /><circle cx="15" cy="12" r="1.5" /><circle cx="9" cy="18" r="1.5" /><circle cx="15" cy="18" r="1.5" /></svg>
+              </span>
+            </span>
+            <span>${width}</span>
+          </span>
           <div class="loader"></div>
-          <button class="btn-delete" title="Delete Frame">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
-          </button>
+          <div class="frame-actions">
+            <button class="btn-icon btn-refresh" title="Refresh Frame" aria-label="Refresh Frame">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2v6h-6" /><path d="M3 12a9 9 0 0 1 15.55-6.36L21 8" /><path d="M3 22v-6h6" /><path d="M21 12a9 9 0 0 1-15.55 6.36L3 16" /></svg>
+            </button>
+            <button class="btn-icon btn-open-external" title="Open In New Tab" aria-label="Open In New Tab">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 3h7v7" /><path d="M10 14 21 3" /><path d="M21 14v4a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3V6a3 3 0 0 1 3-3h4" /></svg>
+            </button>
+            <button class="btn-delete btn-icon" title="Delete Frame" aria-label="Delete Frame">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 7l-.867 12.142A2 2 0 0 1 16.138 21H7.862a2 2 0 0 1-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v3M4 7h16" /></svg>
+            </button>
+          </div>
         </h2>
         <div class="iframe-container">
           <iframe sandbox="allow-same-origin allow-forms allow-scripts" seamless width="${width}"></iframe>
@@ -179,9 +310,7 @@ $(document).ready(function() {
     // Use unified loadPage logic to load the current URL into the new frame
     var currentUrl = $('#url-input').val() || defaultURL;
     // Load the URL into the newly created iframe as well
-    $newIframe.data('loaded', false);
-    showLoader($newFrame.attr('id'));
-    $newIframe.get(0).src = normalizeInputUrl(currentUrl);
+    loadIframe($newIframe, currentUrl);
 
     // Clear input
     $('#custom-width').val('');
@@ -198,6 +327,68 @@ $(document).ready(function() {
     }
     $(this).closest('.frame').remove();
     updateScaling();
+  });
+
+  $(document).on('click', '.btn-refresh', function() {
+    var $frame = $(this).closest('.frame');
+    loadIframe($frame.find('iframe'), getFrameUrl($frame));
+  });
+
+  $(document).on('click', '.btn-open-external', function() {
+    var url = getFrameUrl($(this).closest('.frame'));
+    window.open(url, '_blank', 'noopener,noreferrer');
+  });
+
+  $(document).on('pointerdown', '.frame h2', function(e) {
+    if ($(e.target).closest('.frame-actions').length || e.button !== 0) {
+      return;
+    }
+
+    resetFrameDragState();
+
+    frameDragState.$frame = $(this).closest('.frame');
+    frameDragState.handleEl = this;
+    frameDragState.pointerId = e.pointerId;
+    frameDragState.startX = e.clientX;
+    frameDragState.startY = e.clientY;
+    frameDragState.$frame.addClass('is-drag-ready');
+    beginFrameDrag();
+  });
+
+  $(document).on('pointermove', function(e) {
+    if (!frameDragState.$frame || frameDragState.pointerId !== e.pointerId) {
+      return;
+    }
+
+    var movedX = Math.abs(e.clientX - frameDragState.startX);
+    var movedY = Math.abs(e.clientY - frameDragState.startY);
+
+    if (!frameDragState.dragging) {
+      if (movedX > FRAME_DRAG_MOVE_TOLERANCE || movedY > FRAME_DRAG_MOVE_TOLERANCE) {
+        resetFrameDragState();
+      }
+      return;
+    }
+
+    e.preventDefault();
+    updateDraggedFramePosition(e.clientX, e.clientY);
+    if (movedX > FRAME_DRAG_MOVE_TOLERANCE || movedY > FRAME_DRAG_MOVE_TOLERANCE) {
+      moveFrameToPointer(e.clientX);
+    }
+  });
+
+  $(document).on('pointerup pointercancel', function(e) {
+    if (frameDragState.pointerId !== e.pointerId) {
+      return;
+    }
+
+    var wasDragging = frameDragState.dragging;
+    resetFrameDragState();
+
+    if (wasDragging) {
+      suppressIframeSyncFor(600);
+      updateScaling();
+    }
   });
 
   //query string
