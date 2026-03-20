@@ -111,6 +111,10 @@ function shouldSuppressIframeSync() {
   return Date.now() < suppressIframeSyncUntil;
 }
 
+function isFrameReordering() {
+  return frameDragState.dragging || shouldSuppressIframeSync();
+}
+
 
 //when document loads
 function onIframeLoad() {
@@ -126,7 +130,7 @@ function onIframeLoad() {
     url = $this.data('current-url') || getFallbackUrl();
   }
 
-  if (shouldSuppressIframeSync()) {
+  if (isFrameReordering()) {
     hideLoader($this.closest('.frame').attr('id'));
     $this.data('loaded', true);
     updateScaling();
@@ -136,11 +140,10 @@ function onIframeLoad() {
   //load other pages with the same URL
   if (allLoaded()) {
     if (error) {
-      // If we are already on a proxy URL, don't alert just to avoid annoying the user
-      if (url.indexOf('api.codetabs.com') === -1) {
-        alert('Browsers prevent navigation from inside iframes across domains.\nPlease use the textbox at the top for external sites.');
-        loadPage('', defaultURL);
-      }
+      hideLoader($this.closest('.frame').attr('id'));
+      $this.data('loaded', true);
+      updateScaling();
+      return;
     } else {
       loadPage($this, url);
     }
@@ -156,14 +159,77 @@ function onIframeLoad() {
 }
 
 // Function to update scaling for all iframes
+function getFramesAvailableHeight() {
+  var $frames = $('#frames');
+  var framesStyles = window.getComputedStyle($frames.get(0));
+  var paddingTop = parseFloat(framesStyles.paddingTop || 0) || 0;
+  var paddingBottom = parseFloat(framesStyles.paddingBottom || 0) || 0;
+  var topBarHeight = $('#url').outerHeight(true) || 0;
+  var footerHeight = $('#footer').outerHeight(true) || 0;
+  var viewportHeight = window.innerHeight || document.documentElement.clientHeight || 0;
+
+  return Math.max(0, viewportHeight - topBarHeight - footerHeight - paddingTop - paddingBottom);
+}
+
+function updateRowHeights() {
+  var $inner = $('#inner');
+  var $rows = $inner.children('.frame-row');
+
+  if (!$rows.length) return;
+
+  var styles = window.getComputedStyle($inner.get(0));
+  var gap = parseFloat(styles.rowGap || styles.gap || 0) || 0;
+  var rowCount = $rows.length;
+  var availableHeight = getFramesAvailableHeight();
+  var rowHeight = availableHeight;
+  var totalHeight = rowCount > 0 ? rowHeight * rowCount + gap * (rowCount - 1) : availableHeight;
+
+  $inner.css('height', totalHeight + 'px');
+  $rows.css('height', rowHeight + 'px');
+}
+
+function updateRowWidths() {
+  $('#inner .frame-row').each(function() {
+    var $row = $(this);
+    var $frames = $row.children('.frame');
+    var frameCount = $frames.length;
+
+    if (!frameCount) return;
+
+    var rowStyles = window.getComputedStyle(this);
+    var gap = parseFloat(rowStyles.columnGap || rowStyles.gap || 0) || 0;
+    var availableWidth = Math.max(0, $row.innerWidth() - gap * (frameCount - 1));
+    var totalTargetWidth = 0;
+
+    $frames.each(function() {
+      totalTargetWidth += parseInt($(this).find('iframe').attr('width'), 10) || 0;
+    });
+
+    var scale = totalTargetWidth > 0 ? Math.min(1, availableWidth / totalTargetWidth) : 1;
+
+    $frames.each(function() {
+      var targetWidth = parseInt($(this).find('iframe').attr('width'), 10) || 0;
+      var computedWidth = Math.max(0, targetWidth * scale);
+      $(this).css({
+        'flex': '0 0 ' + computedWidth + 'px',
+        'width': computedWidth + 'px',
+        'min-width': computedWidth + 'px',
+        'max-width': targetWidth + 'px'
+      });
+    });
+  });
+}
+
 function updateScaling() {
+  updateRowHeights();
+  updateRowWidths();
   $('.frame').each(function() {
     var $frame = $(this);
     var $iframe = $frame.find('iframe');
     var containerWidth = $frame.width();
     var targetWidth = parseInt($iframe.attr('width'));
     if (containerWidth && targetWidth) {
-      var scale = containerWidth / targetWidth;
+      var scale = Math.min(1, containerWidth / targetWidth);
 
       // Calculate available height for iframe (container height - h2 height)
       var h2Height = $frame.find('h2').outerHeight();
@@ -181,12 +247,68 @@ function updateScaling() {
   });
 }
 
+function getOrderedFrames() {
+  return $('#inner .frame').toArray();
+}
+
+function regroupFrames(orderedFrames) {
+  var frames = orderedFrames || getOrderedFrames();
+  var $inner = $('#inner');
+  var requiredRowCount = Math.ceil(frames.length / 4);
+
+  while ($inner.children('.frame-row').length < requiredRowCount) {
+    $inner.append('<div class="frame-row"></div>');
+  }
+
+  $inner.children('.frame-row').each(function(rowIndex) {
+    var rowEl = this;
+    var expectedFrames = frames.slice(rowIndex * 4, rowIndex * 4 + 4);
+
+    if (!expectedFrames.length) {
+      $(rowEl).remove();
+      return;
+    }
+
+    for (var i = 0; i < expectedFrames.length; i++) {
+      var expectedFrame = expectedFrames[i];
+      var currentFrameAtPosition = rowEl.children[i];
+      if (currentFrameAtPosition !== expectedFrame) {
+        rowEl.insertBefore(expectedFrame, currentFrameAtPosition || null);
+      }
+    }
+  });
+
+  $inner.children('.frame-row').slice(requiredRowCount).remove();
+}
+
+function getDragTargetIndex(clientX, clientY) {
+  var draggedEl = frameDragState.$frame && frameDragState.$frame.get(0);
+  var frames = getOrderedFrames().filter(function(frameEl) {
+    return frameEl !== draggedEl;
+  });
+
+  for (var i = 0; i < frames.length; i++) {
+    var rect = frames[i].getBoundingClientRect();
+    var isBeforeThisRow = clientY < rect.top;
+    var isWithinThisRow = clientY >= rect.top && clientY <= rect.bottom;
+    var isBeforeFrameMidpoint = clientX < rect.left + rect.width / 2;
+
+    if (isBeforeThisRow || (isWithinThisRow && isBeforeFrameMidpoint)) {
+      return i;
+    }
+  }
+
+  return frames.length;
+}
+
 var frameDragState = {
   $frame: null,
   handleEl: null,
   pointerId: null,
   startX: 0,
   startY: 0,
+  startIndex: -1,
+  targetIndex: -1,
   dragging: false
 };
 
@@ -203,6 +325,8 @@ function resetFrameDragState() {
   frameDragState.pointerId = null;
   frameDragState.startX = 0;
   frameDragState.startY = 0;
+  frameDragState.startIndex = -1;
+  frameDragState.targetIndex = -1;
   frameDragState.dragging = false;
 }
 
@@ -215,32 +339,9 @@ function updateDraggedFramePosition(clientX, clientY) {
   frameDragState.$frame.css('transform', 'translate3d(' + deltaX + 'px, ' + deltaY + 'px, 0)');
 }
 
-function moveFrameToPointer(clientX) {
-  var $dragged = frameDragState.$frame;
-  if (!$dragged || !$dragged.length) return;
-
-  var inserted = false;
-  $('#inner .frame').not($dragged).each(function() {
-    var rect = this.getBoundingClientRect();
-    var midpoint = rect.left + rect.width / 2;
-
-    if (clientX < midpoint) {
-      if (this.previousElementSibling !== $dragged.get(0)) {
-        $(this).before($dragged);
-      }
-      inserted = true;
-      return false;
-    }
-  });
-
-  if (!inserted) {
-    $('#inner').append($dragged);
-  }
-}
-
 function beginFrameDrag() {
   if (!frameDragState.$frame || !frameDragState.$frame.length) return;
-  suppressIframeSyncFor(1000);
+  suppressIframeSyncFor(10000);
   frameDragState.dragging = true;
   frameDragState.$frame.removeClass('is-drag-ready').addClass('is-dragging');
   $('body').addClass('frame-dragging');
@@ -301,7 +402,12 @@ $(document).ready(function() {
     `;
 
     var $newFrame = $(frameHtml);
-    $('#inner').append($newFrame);
+    var $lastRow = $('#inner .frame-row').last();
+    if ($lastRow.length && $lastRow.children('.frame').length < 4) {
+      $lastRow.append($newFrame);
+    } else {
+      $('#inner').append($('<div class="frame-row"></div>').append($newFrame));
+    }
     var $newIframe = $newFrame.find('iframe');
 
     // Bind load event to new iframe using the unified handler
@@ -316,6 +422,7 @@ $(document).ready(function() {
     $('#custom-width').val('');
 
     // Update scaling for all
+    regroupFrames();
     updateScaling();
   });
 
@@ -326,6 +433,7 @@ $(document).ready(function() {
       return;
     }
     $(this).closest('.frame').remove();
+    regroupFrames();
     updateScaling();
   });
 
@@ -351,6 +459,8 @@ $(document).ready(function() {
     frameDragState.pointerId = e.pointerId;
     frameDragState.startX = e.clientX;
     frameDragState.startY = e.clientY;
+    frameDragState.startIndex = getOrderedFrames().indexOf(frameDragState.$frame.get(0));
+    frameDragState.targetIndex = frameDragState.startIndex;
     frameDragState.$frame.addClass('is-drag-ready');
     beginFrameDrag();
   });
@@ -373,7 +483,7 @@ $(document).ready(function() {
     e.preventDefault();
     updateDraggedFramePosition(e.clientX, e.clientY);
     if (movedX > FRAME_DRAG_MOVE_TOLERANCE || movedY > FRAME_DRAG_MOVE_TOLERANCE) {
-      moveFrameToPointer(e.clientX);
+      frameDragState.targetIndex = getDragTargetIndex(e.clientX, e.clientY);
     }
   });
 
@@ -383,10 +493,24 @@ $(document).ready(function() {
     }
 
     var wasDragging = frameDragState.dragging;
+    var startIndex = frameDragState.startIndex;
+    var targetIndex = frameDragState.targetIndex;
+    var draggedEl = frameDragState.$frame && frameDragState.$frame.get(0);
     resetFrameDragState();
 
     if (wasDragging) {
-      suppressIframeSyncFor(600);
+      suppressIframeSyncFor(2000);
+    }
+
+    if (wasDragging && draggedEl && startIndex !== targetIndex && targetIndex >= 0) {
+      var orderedFrames = getOrderedFrames().filter(function(frameEl) {
+        return frameEl !== draggedEl;
+      });
+      orderedFrames.splice(targetIndex, 0, draggedEl);
+      regroupFrames(orderedFrames);
+    }
+
+    if (wasDragging) {
       updateScaling();
     }
   });
@@ -406,5 +530,7 @@ $(document).ready(function() {
 
   //when initial frames load
   $('iframe').on('load', onIframeLoad);
+
+  regroupFrames();
 
 });
