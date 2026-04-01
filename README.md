@@ -1,4 +1,4 @@
-# Responsive Design Testing（本地多尺寸预览工具）
+# Responsive-Comparer（本地多尺寸预览工具）
 
 一个轻量的前端小工具：同一个 URL 在多个宽度的 `iframe` 中同时打开，方便快速检查响应式布局。
 
