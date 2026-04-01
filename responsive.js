@@ -251,10 +251,12 @@ function getOrderedFrames() {
   return $('#inner .frame').toArray();
 }
 
+var MAX_FRAMES_PER_ROW = 3;
+
 function regroupFrames(orderedFrames) {
   var frames = orderedFrames || getOrderedFrames();
   var $inner = $('#inner');
-  var requiredRowCount = Math.ceil(frames.length / 4);
+  var requiredRowCount = Math.ceil(frames.length / MAX_FRAMES_PER_ROW);
 
   while ($inner.children('.frame-row').length < requiredRowCount) {
     $inner.append('<div class="frame-row"></div>');
@@ -262,7 +264,10 @@ function regroupFrames(orderedFrames) {
 
   $inner.children('.frame-row').each(function(rowIndex) {
     var rowEl = this;
-    var expectedFrames = frames.slice(rowIndex * 4, rowIndex * 4 + 4);
+    var expectedFrames = frames.slice(
+      rowIndex * MAX_FRAMES_PER_ROW,
+      rowIndex * MAX_FRAMES_PER_ROW + MAX_FRAMES_PER_ROW
+    );
 
     if (!expectedFrames.length) {
       $(rowEl).remove();
@@ -403,7 +408,7 @@ $(document).ready(function() {
 
     var $newFrame = $(frameHtml);
     var $lastRow = $('#inner .frame-row').last();
-    if ($lastRow.length && $lastRow.children('.frame').length < 4) {
+    if ($lastRow.length && $lastRow.children('.frame').length < MAX_FRAMES_PER_ROW) {
       $lastRow.append($newFrame);
     } else {
       $('#inner').append($('<div class="frame-row"></div>').append($newFrame));
